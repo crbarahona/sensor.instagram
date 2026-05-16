@@ -55,10 +55,16 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     account = config[CONF_ACCOUNT]
     name = config[CONF_NAME]
 
+    _LOGGER.warning("Setting up Instagram sensor platform for %s", account)
+
     session = async_create_clientsession(hass)
 
     sensor = InstagramSensor(account, name, session)
-    async_add_entities([sensor], True)
+
+    # Add the entity even if the first Instagram update fails.
+    # This makes startup/debugging easier and avoids losing the entity on
+    # temporary 403/429/network failures.
+    async_add_entities([sensor], False)
 
 
 class InstagramSensor(Entity):
@@ -83,15 +89,20 @@ class InstagramSensor(Entity):
         self._is_verified: bool | None = None
 
     @property
+    def unique_id(self) -> str:
+        """Return a unique ID for this sensor."""
+        return f"instagram_{self._account}"
+
+    @property
     def available(self) -> bool:
         """Return whether the sensor is available."""
         return self._available
 
     @property
-    def state(self):
-        """Return the sensor state.
+    def native_value(self):
+        """Return the sensor value.
 
-        Followers is used as the primary state because it is numeric and useful
+        Followers is used as the primary value because it is numeric and useful
         for history graphs. Other counts are exposed as attributes.
         """
         return self._followers
