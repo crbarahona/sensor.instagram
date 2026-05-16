@@ -37,7 +37,10 @@ HEADERS = {
         "Chrome/124.0.0.0 Safari/537.36"
     ),
     "Accept": "application/json",
+    "Accept-Language": "en-US,en;q=0.9",
     "X-IG-App-ID": "936619743392459",
+    "Referer": "https://www.instagram.com/",
+    "Origin": "https://www.instagram.com",
 }
 
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
@@ -58,7 +61,6 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     _LOGGER.warning("Setting up Instagram sensor platform for %s", account)
 
     session = async_create_clientsession(hass)
-
     sensor = InstagramSensor(account, name, session)
 
     # Add the entity even if the first Instagram update fails.
@@ -87,6 +89,10 @@ class InstagramSensor(Entity):
         self._profile_pic_url: str | None = None
         self._is_private: bool | None = None
         self._is_verified: bool | None = None
+
+        self._last_error: str | None = None
+        self._last_status: int | None = None
+        self._last_response_preview: str | None = None
 
     @property
     def unique_id(self) -> str:
@@ -119,6 +125,9 @@ class InstagramSensor(Entity):
             "is_private": self._is_private,
             "is_verified": self._is_verified,
             "profile_pic_url": self._profile_pic_url,
+            "last_error": self._last_error,
+            "last_status": self._last_status,
+            "last_response_preview": self._last_response_preview,
         }
 
     async def async_update(self) -> None:
@@ -135,7 +144,12 @@ class InstagramSensor(Entity):
 
                 text = await response.text()
 
+                self._last_status = response.status
+                self._last_response_preview = text[:300]
+                self._last_error = None
+
                 if response.status != 200:
+                    self._last_error = f"HTTP {response.status}"
                     _LOGGER.warning(
                         "Instagram returned HTTP %s for %s: %s",
                         response.status,
@@ -150,6 +164,7 @@ class InstagramSensor(Entity):
             user = info.get("data", {}).get("user")
 
             if not user:
+                self._last_error = "No user object in Instagram response"
                 _LOGGER.warning(
                     "Instagram response did not include user data for %s: %s",
                     self._account,
@@ -168,9 +183,11 @@ class InstagramSensor(Entity):
             self._is_private = user.get("is_private")
             self._is_verified = user.get("is_verified")
 
+            self._last_error = None
             self._available = True
 
         except Exception as error:
+            self._last_error = str(error)
             _LOGGER.warning(
                 "Could not update Instagram sensor for %s: %s",
                 self._account,
