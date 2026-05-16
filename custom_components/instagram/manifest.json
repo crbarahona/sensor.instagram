@@ -1,11 +1,11 @@
 {
-    "domain": "instagram",
-    "name": "Instagram",
-    "documentation": "https://github.com/hudsonbrendon/sensor.instagram",
-    "dependencies": [],
-    "version": "1.0.2",
-    "codeowners": [
-      "@hudsonbrendon"
-    ],
-    "requirements": []
-  }
+  "domain": "instagram",
+  "name": "Instagram",
+  "documentation": "https://github.com/crbarahona/sensor.instagram",
+  "dependencies": [],
+  "version": "1.0.3",
+  "codeowners": [
+    "@crbarahona"
+  ],
+  "requirements": []
+}
