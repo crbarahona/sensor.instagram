@@ -78,96 +78,23 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     entities = [
         InstagramMetricSensor(data, name, "followers", "Followers", "mdi:account-group"),
         InstagramMetricSensor(data, name, "posts", "Posts", "mdi:grid"),
-        InstagramMetricSensor(
-            data,
-            name,
-            "following",
-            "Following",
-            "mdi:account-arrow-right",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "reels_7d_count",
-            "Reels 7d Count",
-            "mdi:movie-open-play",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "reels_7d_likes",
-            "Reels 7d Likes",
-            "mdi:heart",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "reels_7d_comments",
-            "Reels 7d Comments",
-            "mdi:comment",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "reels_7d_views",
-            "Reels 7d Views",
-            "mdi:eye",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "posts_7d_count",
-            "Posts 7d Count",
-            "mdi:grid",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "posts_7d_likes",
-            "Posts 7d Likes",
-            "mdi:heart",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "posts_7d_comments",
-            "Posts 7d Comments",
-            "mdi:comment",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "recent_7d_count",
-            "Recent 7d Count",
-            "mdi:image-multiple",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "recent_7d_likes",
-            "Recent 7d Likes",
-            "mdi:heart-multiple",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "recent_7d_comments",
-            "Recent 7d Comments",
-            "mdi:comment-multiple",
-        ),
-        InstagramMetricSensor(
-            data,
-            name,
-            "recent_7d_engagement",
-            "Recent 7d Engagement",
-            "mdi:chart-line",
-        ),
+        InstagramMetricSensor(data, name, "following", "Following", "mdi:account-arrow-right"),
+        InstagramMetricSensor(data, name, "reels_7d_count", "Reels 7d Count", "mdi:movie-open-play"),
+        InstagramMetricSensor(data, name, "reels_7d_likes", "Reels 7d Likes", "mdi:heart"),
+        InstagramMetricSensor(data, name, "reels_7d_comments", "Reels 7d Comments", "mdi:comment"),
+        InstagramMetricSensor(data, name, "reels_7d_views", "Reels 7d Views", "mdi:eye"),
+        InstagramMetricSensor(data, name, "posts_7d_count", "Posts 7d Count", "mdi:grid"),
+        InstagramMetricSensor(data, name, "posts_7d_likes", "Posts 7d Likes", "mdi:heart"),
+        InstagramMetricSensor(data, name, "posts_7d_comments", "Posts 7d Comments", "mdi:comment"),
+        InstagramMetricSensor(data, name, "recent_7d_count", "Recent 7d Count", "mdi:image-multiple"),
+        InstagramMetricSensor(data, name, "recent_7d_likes", "Recent 7d Likes", "mdi:heart-multiple"),
+        InstagramMetricSensor(data, name, "recent_7d_comments", "Recent 7d Comments", "mdi:comment-multiple"),
+        InstagramMetricSensor(data, name, "recent_7d_engagement", "Recent 7d Engagement", "mdi:chart-line"),
     ]
 
     async_add_entities(entities, False)
 
     async def update_all(now=None):
-        """Update shared Instagram data and refresh all entities."""
         await data.async_update()
         for entity in entities:
             entity.async_write_ha_state()
@@ -177,43 +104,17 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
 
 
 class InstagramData:
-    """Shared Instagram data fetched once for multiple sensors."""
-
-    def __init__(
-        self,
-        account: str,
-        scan_interval: timedelta,
-        target_user_id: str | None,
-    ) -> None:
-        """Initialize shared data."""
+    def __init__(self, account: str, scan_interval: timedelta, target_user_id: str | None) -> None:
         self.account = account
         self.scan_interval = scan_interval
         self.target_user_id = target_user_id
-
         self.values: dict[str, Any] = {
-            "followers": None,
-            "posts": None,
-            "following": None,
-            "reels_7d_count": None,
-            "reels_7d_likes": None,
-            "reels_7d_comments": None,
-            "reels_7d_views": None,
-            "posts_7d_count": None,
-            "posts_7d_likes": None,
-            "posts_7d_comments": None,
-            "recent_7d_count": None,
-            "recent_7d_likes": None,
-            "recent_7d_comments": None,
-            "recent_7d_engagement": None,
+            "followers": None, "posts": None, "following": None,
+            "reels_7d_count": None, "reels_7d_likes": None, "reels_7d_comments": None, "reels_7d_views": None,
+            "posts_7d_count": None, "posts_7d_likes": None, "posts_7d_comments": None,
+            "recent_7d_count": None, "recent_7d_likes": None, "recent_7d_comments": None, "recent_7d_engagement": None,
         }
-
-        self.profile: dict[str, Any] = {
-            "full_name": None,
-            "is_private": None,
-            "is_verified": None,
-            "profile_pic_url": None,
-        }
-
+        self.profile: dict[str, Any] = {"full_name": None, "is_private": None, "is_verified": None, "profile_pic_url": None}
         self.diagnostics: dict[str, Any] = {
             "integration_version": "1.1.5-curl-clips-posts-dashboard",
             "fetch_method": "curl",
@@ -238,14 +139,10 @@ class InstagramData:
         }
 
     async def async_update(self) -> None:
-        """Update Instagram data."""
         _LOGGER.warning("Updating Instagram data for %s using curl", self.account)
-
         profile_user = await self._update_from_profile()
-
         if profile_user:
             self._parse_recent_media_from_profile(profile_user)
-
         if self.target_user_id:
             clips_items = await self._fetch_clips_items()
             if clips_items is not None:
@@ -257,184 +154,84 @@ class InstagramData:
         elif profile_user:
             self._parse_recent_reels_from_profile(profile_user)
             self.diagnostics["views_source"] = "web_profile_info"
-
         if self.diagnostics.get("profile_last_error") is None:
             self.diagnostics["last_success"] = datetime.now(timezone.utc).isoformat()
 
     async def _update_from_profile(self) -> dict[str, Any] | None:
-        """Fetch and parse profile data from web_profile_info."""
         try:
             status, body, stderr_text = await self._fetch_profile_with_curl()
             preview = body[:500]
-
             self.diagnostics["profile_last_status"] = status
             self.diagnostics["profile_last_response_preview"] = preview
             self.diagnostics["profile_last_error"] = None
-
             if status != 200:
                 error = f"HTTP {status}"
                 if stderr_text:
                     error = f"{error}: {stderr_text}"
                 self.diagnostics["profile_last_error"] = error
-                _LOGGER.warning(
-                    "Instagram profile endpoint returned HTTP %s for %s: %s",
-                    status,
-                    self.account,
-                    preview,
-                )
                 return None
-
             try:
                 info: dict[str, Any] = json.loads(body)
             except Exception as json_error:
-                self.diagnostics["profile_last_error"] = (
-                    f"JSON parse error: {json_error}"
-                )
-                _LOGGER.warning(
-                    "Instagram profile endpoint returned non-JSON for %s: %s",
-                    self.account,
-                    preview,
-                )
+                self.diagnostics["profile_last_error"] = f"JSON parse error: {json_error}"
                 return None
-
             user = info.get("data", {}).get("user")
             if not user:
-                self.diagnostics["profile_last_error"] = (
-                    "No user object in Instagram response"
-                )
-                _LOGGER.warning(
-                    "Instagram profile response did not include user data for %s: %s",
-                    self.account,
-                    info,
-                )
+                self.diagnostics["profile_last_error"] = "No user object in Instagram response"
                 return None
-
             self.profile["full_name"] = user.get("full_name")
             self.profile["is_private"] = user.get("is_private")
             self.profile["is_verified"] = user.get("is_verified")
-            self.profile["profile_pic_url"] = user.get("profile_pic_url_hd") or user.get(
-                "profile_pic_url"
-            )
-
-            self.values["posts"] = self._count_from_edge(
-                user.get("edge_owner_to_timeline_media")
-            )
-            self.values["followers"] = self._count_from_edge(
-                user.get("edge_followed_by")
-            )
+            self.profile["profile_pic_url"] = user.get("profile_pic_url_hd") or user.get("profile_pic_url")
+            self.values["posts"] = self._count_from_edge(user.get("edge_owner_to_timeline_media"))
+            self.values["followers"] = self._count_from_edge(user.get("edge_followed_by"))
             self.values["following"] = self._count_from_edge(user.get("edge_follow"))
-
             return user
-
         except Exception as error:
             self.diagnostics["profile_last_error"] = str(error)
-            _LOGGER.warning(
-                "Could not update Instagram profile data for %s using curl: %s",
-                self.account,
-                error,
-            )
             return None
 
     async def _fetch_profile_with_curl(self) -> tuple[int, str, str]:
-        """Fetch Instagram profile data using curl."""
         username = quote(self.account, safe="")
         url = f"{PROFILE_URL}?username={username}"
-
-        cmd = [
-            "curl",
-            "-sS",
-            "-L",
-            "--max-time",
-            "15",
-            "-w",
-            "\n%{http_code}",
-            url,
-            "-H",
-            f"User-Agent: {USER_AGENT}",
-            "-H",
-            "Accept: application/json",
-            "-H",
-            "Accept-Language: en-US,en;q=0.9",
-            "-H",
-            "X-IG-App-ID: 936619743392459",
-            "-H",
-            "Referer: https://www.instagram.com/",
-            "-H",
-            "Origin: https://www.instagram.com",
-        ]
-
+        cmd = ["curl", "-sS", "-L", "--max-time", "15", "-w", "\n%{http_code}", url, "-H", f"User-Agent: {USER_AGENT}", "-H", "Accept: application/json", "-H", "Accept-Language: en-US,en;q=0.9", "-H", "X-IG-App-ID: 936619743392459", "-H", "Referer: https://www.instagram.com/", "-H", "Origin: https://www.instagram.com"]
         return await self._run_curl_with_status(cmd)
 
     async def _fetch_clips_items(self) -> list[dict[str, Any]] | None:
-        """Fetch clips data using anonymous CSRF bootstrap."""
         if not self.target_user_id:
             return None
-
         with tempfile.NamedTemporaryFile(prefix="ig-cookies-", delete=False) as cookie_file:
             cookie_jar = cookie_file.name
-
         try:
             csrf_token = await self._bootstrap_anonymous_csrf(cookie_jar)
-
             if not csrf_token:
-                self.diagnostics["clips_last_error"] = (
-                    "Could not extract csrftoken from anonymous session"
-                )
+                self.diagnostics["clips_last_error"] = "Could not extract csrftoken from anonymous session"
                 return None
-
-            status, body, stderr_text = await self._post_clips_user(
-                cookie_jar,
-                csrf_token,
-            )
-
+            status, body, stderr_text = await self._post_clips_user(cookie_jar, csrf_token)
             preview = body[:500]
             self.diagnostics["clips_last_status"] = status
             self.diagnostics["clips_last_response_preview"] = preview
             self.diagnostics["clips_last_error"] = None
-
             if status != 200:
                 error = f"HTTP {status}"
                 if stderr_text:
                     error = f"{error}: {stderr_text}"
                 self.diagnostics["clips_last_error"] = error
-                _LOGGER.warning(
-                    "Instagram clips endpoint returned HTTP %s for %s: %s",
-                    status,
-                    self.account,
-                    preview,
-                )
                 return None
-
             try:
                 info: dict[str, Any] = json.loads(body)
             except Exception as json_error:
-                self.diagnostics["clips_last_error"] = (
-                    f"JSON parse error: {json_error}"
-                )
-                _LOGGER.warning(
-                    "Instagram clips endpoint returned non-JSON for %s: %s",
-                    self.account,
-                    preview,
-                )
+                self.diagnostics["clips_last_error"] = f"JSON parse error: {json_error}"
                 return None
-
             items = info.get("items")
             if not isinstance(items, list):
                 self.diagnostics["clips_last_error"] = "No items list in clips response"
                 return None
-
             self.diagnostics["clips_recent_count"] = len(items)
             return items
-
         except Exception as error:
             self.diagnostics["clips_last_error"] = str(error)
-            _LOGGER.warning(
-                "Could not update Instagram clips data for %s using curl: %s",
-                self.account,
-                error,
-            )
             return None
-
         finally:
             try:
                 os.remove(cookie_jar)
@@ -442,247 +239,114 @@ class InstagramData:
                 pass
 
     async def _bootstrap_anonymous_csrf(self, cookie_jar: str) -> str | None:
-        """Load reels page and extract anonymous CSRF token from cookie jar."""
         account = quote(self.account, safe="")
         reels_url = f"https://www.instagram.com/{account}/reels/"
-
-        cmd = [
-            "curl",
-            "-sS",
-            "-L",
-            "--max-time",
-            "15",
-            "-c",
-            cookie_jar,
-            reels_url,
-            "-H",
-            f"User-Agent: {USER_AGENT}",
-            "-H",
-            "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-            "-H",
-            "Accept-Language: en-US,en;q=0.9",
-        ]
-
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
+        cmd = ["curl", "-sS", "-L", "--max-time", "15", "-c", cookie_jar, reels_url, "-H", f"User-Agent: {USER_AGENT}", "-H", "Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8", "-H", "Accept-Language: en-US,en;q=0.9"]
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.PIPE)
         _, stderr = await asyncio.wait_for(proc.communicate(), timeout=20)
         stderr_text = stderr.decode("utf-8", errors="replace")
-
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"csrf bootstrap curl failed with exit code {proc.returncode}: "
-                f"{stderr_text}"
-            )
-
+            raise RuntimeError(f"csrf bootstrap curl failed with exit code {proc.returncode}: {stderr_text}")
         return self._read_cookie_value(cookie_jar, "csrftoken")
 
     @staticmethod
     def _read_cookie_value(cookie_jar: str, cookie_name: str) -> str | None:
-        """Read a cookie value from a Netscape-format curl cookie jar."""
         try:
             with open(cookie_jar, encoding="utf-8") as file:
                 lines = file.readlines()
         except OSError:
             return None
-
         for line in reversed(lines):
             line = line.strip()
             if not line or line.startswith("#"):
                 continue
-
             parts = re.split(r"\s+", line)
             if len(parts) >= 7 and parts[5] == cookie_name:
                 return parts[6]
-
         return None
 
-    async def _post_clips_user(
-        self,
-        cookie_jar: str,
-        csrf_token: str,
-    ) -> tuple[int, str, str]:
-        """POST to Instagram clips/user endpoint using anonymous cookie jar."""
-        data = (
-            "include_feed_video=true"
-            "&page_size=12"
-            f"&target_user_id={quote(self.target_user_id or '', safe='')}"
-        )
-
+    async def _post_clips_user(self, cookie_jar: str, csrf_token: str) -> tuple[int, str, str]:
+        data = "include_feed_video=true" "&page_size=12" f"&target_user_id={quote(self.target_user_id or '', safe='')}"
         referer_account = quote(self.account, safe="")
         referer = f"https://www.instagram.com/{referer_account}/reels/"
-
-        cmd = [
-            "curl",
-            "-sS",
-            "-L",
-            "--max-time",
-            "15",
-            "-w",
-            "\n%{http_code}",
-            "-b",
-            cookie_jar,
-            "-c",
-            cookie_jar,
-            CLIPS_USER_URL,
-            "-H",
-            "Accept: */*",
-            "-H",
-            "Accept-Language: en-US,en;q=0.9",
-            "-H",
-            "Content-Type: application/x-www-form-urlencoded",
-            "-H",
-            "Origin: https://www.instagram.com",
-            "-H",
-            f"Referer: {referer}",
-            "-H",
-            f"User-Agent: {USER_AGENT}",
-            "-H",
-            "X-ASBD-ID: 359341",
-            "-H",
-            f"X-CSRFToken: {csrf_token}",
-            "-H",
-            "X-IG-App-ID: 936619743392459",
-            "-H",
-            "X-Requested-With: XMLHttpRequest",
-            "--data-raw",
-            data,
-        ]
-
+        cmd = ["curl", "-sS", "-L", "--max-time", "15", "-w", "\n%{http_code}", "-b", cookie_jar, "-c", cookie_jar, CLIPS_USER_URL, "-H", "Accept: */*", "-H", "Accept-Language: en-US,en;q=0.9", "-H", "Content-Type: application/x-www-form-urlencoded", "-H", "Origin: https://www.instagram.com", "-H", f"Referer: {referer}", "-H", f"User-Agent: {USER_AGENT}", "-H", "X-ASBD-ID: 359341", "-H", f"X-CSRFToken: {csrf_token}", "-H", "X-IG-App-ID: 936619743392459", "-H", "X-Requested-With: XMLHttpRequest", "--data-raw", data]
         return await self._run_curl_with_status(cmd)
 
     @staticmethod
     async def _run_curl_with_status(cmd: list[str]) -> tuple[int, str, str]:
-        """Run curl command that appends HTTP status to stdout."""
-        proc = await asyncio.create_subprocess_exec(
-            *cmd,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-
+        proc = await asyncio.create_subprocess_exec(*cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE)
         stdout, stderr = await asyncio.wait_for(proc.communicate(), timeout=20)
-
         stdout_text = stdout.decode("utf-8", errors="replace")
         stderr_text = stderr.decode("utf-8", errors="replace")
-
         if proc.returncode != 0:
-            raise RuntimeError(
-                f"curl failed with exit code {proc.returncode}: {stderr_text}"
-            )
-
+            raise RuntimeError(f"curl failed with exit code {proc.returncode}: {stderr_text}")
         try:
             body, status_text = stdout_text.rsplit("\n", 1)
             status = int(status_text.strip())
         except ValueError as error:
             raise RuntimeError(f"Could not parse curl status output: {stdout_text}") from error
-
         return status, body, stderr_text
 
     @staticmethod
     def _count_from_edge(edge: dict[str, Any] | None) -> int | None:
-        """Extract a count from an Instagram edge object."""
         if not isinstance(edge, dict):
             return None
-
         count = edge.get("count")
         if isinstance(count, int):
             return count
-
         return None
 
     @staticmethod
     def _is_reel(node: dict[str, Any]) -> bool:
-        """Return whether a media node looks like a reel."""
         if not isinstance(node, dict):
             return False
-
         if node.get("product_type") == "clips":
             return True
-
         if node.get("__typename") == "GraphVideo" and node.get("is_video") is True:
             return True
-
         return False
 
     @staticmethod
     def _extract_view_candidates(node: dict[str, Any]) -> dict[str, Any]:
-        """Extract all known possible Reel view/play count fields."""
         clips_metadata = node.get("clips_metadata", {})
         if not isinstance(clips_metadata, dict):
             clips_metadata = {}
-
-        return {
-            "clips_metadata_ig_play_count": clips_metadata.get("ig_play_count"),
-            "clips_metadata_play_count": clips_metadata.get("play_count"),
-            "clips_metadata_view_count": clips_metadata.get("view_count"),
-            "ig_play_count": node.get("ig_play_count"),
-            "play_count": node.get("play_count"),
-            "view_count": node.get("view_count"),
-            "video_play_count": node.get("video_play_count"),
-            "video_view_count": node.get("video_view_count"),
-        }
+        return {"clips_metadata_ig_play_count": clips_metadata.get("ig_play_count"), "clips_metadata_play_count": clips_metadata.get("play_count"), "clips_metadata_view_count": clips_metadata.get("view_count"), "ig_play_count": node.get("ig_play_count"), "play_count": node.get("play_count"), "view_count": node.get("view_count"), "video_play_count": node.get("video_play_count"), "video_view_count": node.get("video_view_count")}
 
     @staticmethod
     def _choose_view_count(view_candidates: dict[str, Any]) -> int:
-        """Choose the best available Reel view/play count."""
-        preferred_keys = [
-            "clips_metadata_ig_play_count",
-            "ig_play_count",
-            "clips_metadata_play_count",
-            "play_count",
-            "clips_metadata_view_count",
-            "view_count",
-            "video_play_count",
-            "video_view_count",
-        ]
-
+        preferred_keys = ["clips_metadata_ig_play_count", "ig_play_count", "clips_metadata_play_count", "play_count", "clips_metadata_view_count", "view_count", "video_play_count", "video_view_count"]
         for key in preferred_keys:
             value = view_candidates.get(key)
             if isinstance(value, int):
                 return value
-
         return 0
 
     @staticmethod
     def _extract_like_count(node: dict[str, Any]) -> int:
-        """Extract like count from profile or clips media object."""
         like_count = node.get("like_count")
         if isinstance(like_count, int):
             return like_count
-
         edge_like_count = InstagramData._count_from_edge(node.get("edge_liked_by"))
         if isinstance(edge_like_count, int):
             return edge_like_count
-
         return 0
 
     @staticmethod
     def _extract_comment_count(node: dict[str, Any]) -> int:
-        """Extract comment count from profile or clips media object."""
         comment_count = node.get("comment_count")
         if isinstance(comment_count, int):
             return comment_count
-
-        edge_comment_count = InstagramData._count_from_edge(
-            node.get("edge_media_to_comment")
-        )
+        edge_comment_count = InstagramData._count_from_edge(node.get("edge_media_to_comment"))
         if isinstance(edge_comment_count, int):
             return edge_comment_count
-
-        edge_preview_comment_count = InstagramData._count_from_edge(
-            node.get("edge_media_preview_comment")
-        )
+        edge_preview_comment_count = InstagramData._count_from_edge(node.get("edge_media_preview_comment"))
         if isinstance(edge_preview_comment_count, int):
             return edge_preview_comment_count
-
         return 0
 
     @staticmethod
     def _extract_shortcode(node: dict[str, Any]) -> str | None:
-        """Extract shortcode from profile or clips media object."""
         shortcode = node.get("shortcode") or node.get("code")
         if isinstance(shortcode, str):
             return shortcode
@@ -690,7 +354,6 @@ class InstagramData:
 
     @staticmethod
     def _extract_timestamp(node: dict[str, Any]) -> int | None:
-        """Extract timestamp from profile or clips media object."""
         for key in ("taken_at_timestamp", "taken_at", "device_timestamp"):
             value = node.get(key)
             if isinstance(value, int):
@@ -701,17 +364,14 @@ class InstagramData:
 
     @staticmethod
     def _extract_caption(node: dict[str, Any]) -> str | None:
-        """Extract a caption preview from profile or clips media object."""
         caption_text = node.get("caption_text")
         if isinstance(caption_text, str) and caption_text:
             return caption_text[:180]
-
         caption = node.get("caption")
         if isinstance(caption, dict):
             text = caption.get("text")
             if isinstance(text, str) and text:
                 return text[:180]
-
         caption_edges = node.get("edge_media_to_caption", {}).get("edges", [])
         if isinstance(caption_edges, list) and caption_edges:
             try:
@@ -720,193 +380,129 @@ class InstagramData:
                     return text[:180]
             except (KeyError, IndexError, TypeError):
                 return None
-
         return None
 
     @staticmethod
     def _permalink_for_item(shortcode: str | None, media_kind: str) -> str | None:
-        """Build an Instagram permalink for a media item."""
         if not shortcode:
             return None
-
         if media_kind == "reel":
             return f"https://www.instagram.com/reel/{shortcode}/"
-
         return f"https://www.instagram.com/p/{shortcode}/"
 
     @staticmethod
     def _media_kind(node: dict[str, Any]) -> str:
-        """Classify a media node for dashboard display."""
         if InstagramData._is_reel(node):
             return "reel"
-
         if node.get("__typename") == "GraphSidecar":
             return "carousel"
-
         if node.get("is_video") is True:
             return "video"
-
         return "post"
 
     @staticmethod
     def _extract_profile_media_nodes(user: dict[str, Any]) -> list[dict[str, Any]]:
-        """Extract timeline media nodes from a profile response."""
         media = user.get("edge_owner_to_timeline_media", {})
         edges = media.get("edges", [])
-
         if not isinstance(edges, list):
             edges = []
-
         nodes = []
         for edge in edges:
             if isinstance(edge, dict) and isinstance(edge.get("node"), dict):
                 nodes.append(edge["node"])
-
         return nodes
 
     def _parse_recent_media_from_profile(self, user: dict[str, Any]) -> None:
-        """Parse recent normal post and combined media aggregates from profile."""
         nodes = self._extract_profile_media_nodes(user)
         self.diagnostics["recent_media_count"] = len(nodes)
         self.diagnostics["profile_recent_items_available"] = len(nodes)
-
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=RECENT_MEDIA_WINDOW_DAYS)
-
         post_items: list[dict[str, Any]] = []
         recent_items: list[dict[str, Any]] = []
-
         total_post_likes = 0
         total_post_comments = 0
         total_recent_likes = 0
         total_recent_comments = 0
-
         for node in nodes:
             if not isinstance(node, dict):
                 continue
-
             timestamp = self._extract_timestamp(node)
             if timestamp is None:
                 continue
-
             taken_at = datetime.fromtimestamp(timestamp, timezone.utc)
             if taken_at < cutoff:
                 continue
-
             shortcode = self._extract_shortcode(node)
             likes = self._extract_like_count(node)
             comments = self._extract_comment_count(node)
             caption = self._extract_caption(node)
             media_kind = self._media_kind(node)
-
             age_hours = max((now - taken_at).total_seconds() / 3600, 0.01)
             likes_per_hour = round(likes / age_hours, 1)
             comments_per_hour = round(comments / age_hours, 1)
             engagement = likes + comments
             engagement_per_hour = round(engagement / age_hours, 1)
-
-            item = {
-                "shortcode": shortcode,
-                "taken_at": taken_at.isoformat(),
-                "caption": caption,
-                "type": media_kind,
-                "likes": likes,
-                "comments": comments,
-                "engagement": engagement,
-                "age_hours": round(age_hours, 1),
-                "likes_per_hour": likes_per_hour,
-                "comments_per_hour": comments_per_hour,
-                "engagement_per_hour": engagement_per_hour,
-                "typename": node.get("__typename"),
-                "product_type": node.get("product_type"),
-                "media_type": node.get("media_type"),
-                "is_video": node.get("is_video"),
-                "source": "web_profile_info",
-                "url": self._permalink_for_item(shortcode, media_kind),
-            }
-
+            item = {"shortcode": shortcode, "taken_at": taken_at.isoformat(), "caption": caption, "type": media_kind, "likes": likes, "comments": comments, "engagement": engagement, "age_hours": round(age_hours, 1), "likes_per_hour": likes_per_hour, "comments_per_hour": comments_per_hour, "engagement_per_hour": engagement_per_hour, "typename": node.get("__typename"), "product_type": node.get("product_type"), "media_type": node.get("media_type"), "is_video": node.get("is_video"), "source": "web_profile_info", "url": self._permalink_for_item(shortcode, media_kind)}
             total_recent_likes += likes
             total_recent_comments += comments
             recent_items.append(item)
-
             if media_kind != "reel":
                 total_post_likes += likes
                 total_post_comments += comments
                 post_items.append(item)
-
         self.values["posts_7d_count"] = len(post_items)
         self.values["posts_7d_likes"] = total_post_likes
         self.values["posts_7d_comments"] = total_post_comments
-
         self.values["recent_7d_count"] = len(recent_items)
         self.values["recent_7d_likes"] = total_recent_likes
         self.values["recent_7d_comments"] = total_recent_comments
-        self.values["recent_7d_engagement"] = (
-            total_recent_likes + total_recent_comments
-        )
-
+        self.values["recent_7d_engagement"] = total_recent_likes + total_recent_comments
         self.diagnostics["posts_7d_items"] = post_items
         self.diagnostics["recent_7d_items"] = recent_items
 
     def _parse_recent_reels_from_profile(self, user: dict[str, Any]) -> None:
-        """Parse recent reel aggregates from profile response."""
         nodes = self._extract_profile_media_nodes(user)
         self.diagnostics["recent_media_count"] = len(nodes)
         self._parse_recent_reel_nodes(nodes, source="web_profile_info")
 
     def _parse_recent_reels_from_clips(self, items: list[dict[str, Any]]) -> None:
-        """Parse recent reel aggregates from clips/user response."""
         nodes = []
-
         for item in items:
             if not isinstance(item, dict):
                 continue
-
             media = item.get("media")
             if isinstance(media, dict):
                 nodes.append(media)
             else:
                 nodes.append(item)
-
         self.diagnostics["recent_media_count"] = len(nodes)
         self._parse_recent_reel_nodes(nodes, source="clips_user_api")
 
-    def _parse_recent_reel_nodes(
-        self,
-        nodes: list[dict[str, Any]],
-        source: str,
-    ) -> None:
-        """Parse recent reel aggregates from normalized media nodes."""
+    def _parse_recent_reel_nodes(self, nodes: list[dict[str, Any]], source: str) -> None:
         now = datetime.now(timezone.utc)
         cutoff = now - timedelta(days=RECENT_MEDIA_WINDOW_DAYS)
-
         reel_items: list[dict[str, Any]] = []
         total_likes = 0
         total_comments = 0
         total_views = 0
-
         for node in nodes:
             if not isinstance(node, dict):
                 continue
-
             if source == "web_profile_info" and not self._is_reel(node):
                 continue
-
             timestamp = self._extract_timestamp(node)
             if timestamp is None:
                 continue
-
             taken_at = datetime.fromtimestamp(timestamp, timezone.utc)
             if taken_at < cutoff:
                 continue
-
             shortcode = self._extract_shortcode(node)
             likes = self._extract_like_count(node)
             comments = self._extract_comment_count(node)
             view_candidates = self._extract_view_candidates(node)
             views = self._choose_view_count(view_candidates)
             caption = self._extract_caption(node)
-
             age_hours = max((now - taken_at).total_seconds() / 3600, 0.01)
             views_per_hour = round(views / age_hours, 1)
             likes_per_hour = round(likes / age_hours, 1)
@@ -914,37 +510,10 @@ class InstagramData:
             engagement = likes + comments
             engagement_per_hour = round(engagement / age_hours, 1)
             like_rate_percent = round((likes / views) * 100, 2) if views else 0
-
             total_likes += likes
             total_comments += comments
             total_views += views
-
-            reel_items.append(
-                {
-                    "shortcode": shortcode,
-                    "taken_at": taken_at.isoformat(),
-                    "caption": caption,
-                    "type": "reel",
-                    "likes": likes,
-                    "comments": comments,
-                    "views": views,
-                    "engagement": engagement,
-                    "age_hours": round(age_hours, 1),
-                    "views_per_hour": views_per_hour,
-                    "likes_per_hour": likes_per_hour,
-                    "comments_per_hour": comments_per_hour,
-                    "engagement_per_hour": engagement_per_hour,
-                    "like_rate_percent": like_rate_percent,
-                    "view_candidates": view_candidates,
-                    "typename": node.get("__typename"),
-                    "product_type": node.get("product_type"),
-                    "media_type": node.get("media_type"),
-                    "is_video": node.get("is_video"),
-                    "source": source,
-                    "url": self._permalink_for_item(shortcode, "reel"),
-                }
-            )
-
+            reel_items.append({"shortcode": shortcode, "taken_at": taken_at.isoformat(), "caption": caption, "type": "reel", "likes": likes, "comments": comments, "views": views, "engagement": engagement, "age_hours": round(age_hours, 1), "views_per_hour": views_per_hour, "likes_per_hour": likes_per_hour, "comments_per_hour": comments_per_hour, "engagement_per_hour": engagement_per_hour, "like_rate_percent": like_rate_percent, "view_candidates": view_candidates, "typename": node.get("__typename"), "product_type": node.get("product_type"), "media_type": node.get("media_type"), "is_video": node.get("is_video"), "source": source, "url": self._permalink_for_item(shortcode, "reel")})
         self.values["reels_7d_count"] = len(reel_items)
         self.values["reels_7d_likes"] = total_likes
         self.values["reels_7d_comments"] = total_comments
@@ -953,59 +522,38 @@ class InstagramData:
 
 
 class InstagramMetricSensor(SensorEntity):
-    """A single Instagram metric sensor."""
-
     _attr_should_poll = False
     _attr_state_class = SensorStateClass.MEASUREMENT
 
-    def __init__(
-        self,
-        data: InstagramData,
-        base_name: str,
-        metric_key: str,
-        metric_name: str,
-        icon: str,
-    ) -> None:
-        """Initialize metric sensor."""
+    def __init__(self, data: InstagramData, base_name: str, metric_key: str, metric_name: str, icon: str) -> None:
         self._data = data
         self._metric_key = metric_key
-
         if base_name == DEFAULT_NAME:
             base_name = f"Instagram {data.account}"
-
         self._attr_name = f"{base_name} {metric_name}"
         self._attr_unique_id = f"instagram_{data.account}_{metric_key}"
         self._attr_icon = icon
 
     @property
     def native_value(self):
-        """Return metric value."""
         return self._data.values.get(self._metric_key)
 
     @property
     def available(self) -> bool:
-        """Keep sensors available if we have a prior value."""
         if self.native_value is not None:
             return True
         return self._data.diagnostics.get("profile_last_error") is None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
-        """Return sensor attributes."""
-        attrs = {
-            "account": self._data.account,
-            "metric": self._metric_key,
-            **self._data.profile,
-            **self._data.diagnostics,
-        }
-
-        if not self._metric_key.startswith("reels_7d"):
+        attrs = {"account": self._data.account, "metric": self._metric_key, **self._data.profile, **self._data.diagnostics}
+        is_reels_metric = self._metric_key.startswith("reels_7d")
+        is_posts_metric = self._metric_key.startswith("posts_7d")
+        is_recent_metric = self._metric_key.startswith("recent_7d")
+        if not (is_reels_metric or is_recent_metric):
             attrs.pop("reels_7d_items", None)
-
-        if not self._metric_key.startswith("posts_7d"):
+        if not (is_posts_metric or is_recent_metric):
             attrs.pop("posts_7d_items", None)
-
-        if not self._metric_key.startswith("recent_7d"):
+        if not is_recent_metric:
             attrs.pop("recent_7d_items", None)
-
         return attrs
