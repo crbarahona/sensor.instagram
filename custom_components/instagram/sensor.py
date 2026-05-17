@@ -1,8 +1,8 @@
 """
 Instagram sensors for Home Assistant.
 
-Fetches public profile counts and recent reel aggregates from Instagram's
-web endpoints using curl.
+Fetches public profile counts, recent reel aggregates, and recent post
+engagement aggregates from Instagram's web endpoints using curl.
 
 This uses unofficial Instagram endpoints and may break if Instagram changes
 or blocks public profile access.
@@ -40,7 +40,7 @@ DEFAULT_SCAN_INTERVAL = timedelta(hours=24)
 ICON = "mdi:instagram"
 PROFILE_URL = "https://i.instagram.com/api/v1/users/web_profile_info/"
 CLIPS_USER_URL = "https://www.instagram.com/api/v1/clips/user/"
-RECENT_REELS_WINDOW_DAYS = 7
+RECENT_MEDIA_WINDOW_DAYS = 7
 
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
@@ -102,9 +102,65 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         InstagramMetricSensor(
             data,
             name,
+            "reels_7d_comments",
+            "Reels 7d Comments",
+            "mdi:comment",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
             "reels_7d_views",
             "Reels 7d Views",
             "mdi:eye",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
+            "posts_7d_count",
+            "Posts 7d Count",
+            "mdi:grid",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
+            "posts_7d_likes",
+            "Posts 7d Likes",
+            "mdi:heart",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
+            "posts_7d_comments",
+            "Posts 7d Comments",
+            "mdi:comment",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
+            "recent_7d_count",
+            "Recent 7d Count",
+            "mdi:image-multiple",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
+            "recent_7d_likes",
+            "Recent 7d Likes",
+            "mdi:heart-multiple",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
+            "recent_7d_comments",
+            "Recent 7d Comments",
+            "mdi:comment-multiple",
+        ),
+        InstagramMetricSensor(
+            data,
+            name,
+            "recent_7d_engagement",
+            "Recent 7d Engagement",
+            "mdi:chart-line",
         ),
     ]
 
@@ -140,7 +196,15 @@ class InstagramData:
             "following": None,
             "reels_7d_count": None,
             "reels_7d_likes": None,
+            "reels_7d_comments": None,
             "reels_7d_views": None,
+            "posts_7d_count": None,
+            "posts_7d_likes": None,
+            "posts_7d_comments": None,
+            "recent_7d_count": None,
+            "recent_7d_likes": None,
+            "recent_7d_comments": None,
+            "recent_7d_engagement": None,
         }
 
         self.profile: dict[str, Any] = {
@@ -151,7 +215,7 @@ class InstagramData:
         }
 
         self.diagnostics: dict[str, Any] = {
-            "integration_version": "1.1.4-curl-clips-dashboard",
+            "integration_version": "1.1.5-curl-clips-posts-dashboard",
             "fetch_method": "curl",
             "scan_interval_seconds": int(scan_interval.total_seconds()),
             "target_user_id": target_user_id,
@@ -166,8 +230,11 @@ class InstagramData:
             "views_source": "not updated yet",
             "last_success": None,
             "recent_media_count": None,
-            "recent_media_window_days": RECENT_REELS_WINDOW_DAYS,
+            "recent_media_window_days": RECENT_MEDIA_WINDOW_DAYS,
+            "profile_recent_items_available": None,
             "reels_7d_items": [],
+            "posts_7d_items": [],
+            "recent_7d_items": [],
         }
 
     async def async_update(self) -> None:
@@ -175,6 +242,9 @@ class InstagramData:
         _LOGGER.warning("Updating Instagram data for %s using curl", self.account)
 
         profile_user = await self._update_from_profile()
+
+        if profile_user:
+            self._parse_recent_media_from_profile(profile_user)
 
         if self.target_user_id:
             clips_items = await self._fetch_clips_items()
@@ -590,6 +660,27 @@ class InstagramData:
         return 0
 
     @staticmethod
+    def _extract_comment_count(node: dict[str, Any]) -> int:
+        """Extract comment count from profile or clips media object."""
+        comment_count = node.get("comment_count")
+        if isinstance(comment_count, int):
+            return comment_count
+
+        edge_comment_count = InstagramData._count_from_edge(
+            node.get("edge_media_to_comment")
+        )
+        if isinstance(edge_comment_count, int):
+            return edge_comment_count
+
+        edge_preview_comment_count = InstagramData._count_from_edge(
+            node.get("edge_media_preview_comment")
+        )
+        if isinstance(edge_preview_comment_count, int):
+            return edge_preview_comment_count
+
+        return 0
+
+    @staticmethod
     def _extract_shortcode(node: dict[str, Any]) -> str | None:
         """Extract shortcode from profile or clips media object."""
         shortcode = node.get("shortcode") or node.get("code")
@@ -632,8 +723,34 @@ class InstagramData:
 
         return None
 
-    def _parse_recent_reels_from_profile(self, user: dict[str, Any]) -> None:
-        """Parse recent reel aggregates from profile response."""
+    @staticmethod
+    def _permalink_for_item(shortcode: str | None, media_kind: str) -> str | None:
+        """Build an Instagram permalink for a media item."""
+        if not shortcode:
+            return None
+
+        if media_kind == "reel":
+            return f"https://www.instagram.com/reel/{shortcode}/"
+
+        return f"https://www.instagram.com/p/{shortcode}/"
+
+    @staticmethod
+    def _media_kind(node: dict[str, Any]) -> str:
+        """Classify a media node for dashboard display."""
+        if InstagramData._is_reel(node):
+            return "reel"
+
+        if node.get("__typename") == "GraphSidecar":
+            return "carousel"
+
+        if node.get("is_video") is True:
+            return "video"
+
+        return "post"
+
+    @staticmethod
+    def _extract_profile_media_nodes(user: dict[str, Any]) -> list[dict[str, Any]]:
+        """Extract timeline media nodes from a profile response."""
         media = user.get("edge_owner_to_timeline_media", {})
         edges = media.get("edges", [])
 
@@ -645,6 +762,95 @@ class InstagramData:
             if isinstance(edge, dict) and isinstance(edge.get("node"), dict):
                 nodes.append(edge["node"])
 
+        return nodes
+
+    def _parse_recent_media_from_profile(self, user: dict[str, Any]) -> None:
+        """Parse recent normal post and combined media aggregates from profile."""
+        nodes = self._extract_profile_media_nodes(user)
+        self.diagnostics["recent_media_count"] = len(nodes)
+        self.diagnostics["profile_recent_items_available"] = len(nodes)
+
+        now = datetime.now(timezone.utc)
+        cutoff = now - timedelta(days=RECENT_MEDIA_WINDOW_DAYS)
+
+        post_items: list[dict[str, Any]] = []
+        recent_items: list[dict[str, Any]] = []
+
+        total_post_likes = 0
+        total_post_comments = 0
+        total_recent_likes = 0
+        total_recent_comments = 0
+
+        for node in nodes:
+            if not isinstance(node, dict):
+                continue
+
+            timestamp = self._extract_timestamp(node)
+            if timestamp is None:
+                continue
+
+            taken_at = datetime.fromtimestamp(timestamp, timezone.utc)
+            if taken_at < cutoff:
+                continue
+
+            shortcode = self._extract_shortcode(node)
+            likes = self._extract_like_count(node)
+            comments = self._extract_comment_count(node)
+            caption = self._extract_caption(node)
+            media_kind = self._media_kind(node)
+
+            age_hours = max((now - taken_at).total_seconds() / 3600, 0.01)
+            likes_per_hour = round(likes / age_hours, 1)
+            comments_per_hour = round(comments / age_hours, 1)
+            engagement = likes + comments
+            engagement_per_hour = round(engagement / age_hours, 1)
+
+            item = {
+                "shortcode": shortcode,
+                "taken_at": taken_at.isoformat(),
+                "caption": caption,
+                "type": media_kind,
+                "likes": likes,
+                "comments": comments,
+                "engagement": engagement,
+                "age_hours": round(age_hours, 1),
+                "likes_per_hour": likes_per_hour,
+                "comments_per_hour": comments_per_hour,
+                "engagement_per_hour": engagement_per_hour,
+                "typename": node.get("__typename"),
+                "product_type": node.get("product_type"),
+                "media_type": node.get("media_type"),
+                "is_video": node.get("is_video"),
+                "source": "web_profile_info",
+                "url": self._permalink_for_item(shortcode, media_kind),
+            }
+
+            total_recent_likes += likes
+            total_recent_comments += comments
+            recent_items.append(item)
+
+            if media_kind != "reel":
+                total_post_likes += likes
+                total_post_comments += comments
+                post_items.append(item)
+
+        self.values["posts_7d_count"] = len(post_items)
+        self.values["posts_7d_likes"] = total_post_likes
+        self.values["posts_7d_comments"] = total_post_comments
+
+        self.values["recent_7d_count"] = len(recent_items)
+        self.values["recent_7d_likes"] = total_recent_likes
+        self.values["recent_7d_comments"] = total_recent_comments
+        self.values["recent_7d_engagement"] = (
+            total_recent_likes + total_recent_comments
+        )
+
+        self.diagnostics["posts_7d_items"] = post_items
+        self.diagnostics["recent_7d_items"] = recent_items
+
+    def _parse_recent_reels_from_profile(self, user: dict[str, Any]) -> None:
+        """Parse recent reel aggregates from profile response."""
+        nodes = self._extract_profile_media_nodes(user)
         self.diagnostics["recent_media_count"] = len(nodes)
         self._parse_recent_reel_nodes(nodes, source="web_profile_info")
 
@@ -672,10 +878,11 @@ class InstagramData:
     ) -> None:
         """Parse recent reel aggregates from normalized media nodes."""
         now = datetime.now(timezone.utc)
-        cutoff = now - timedelta(days=RECENT_REELS_WINDOW_DAYS)
+        cutoff = now - timedelta(days=RECENT_MEDIA_WINDOW_DAYS)
 
         reel_items: list[dict[str, Any]] = []
         total_likes = 0
+        total_comments = 0
         total_views = 0
 
         for node in nodes:
@@ -695,6 +902,7 @@ class InstagramData:
 
             shortcode = self._extract_shortcode(node)
             likes = self._extract_like_count(node)
+            comments = self._extract_comment_count(node)
             view_candidates = self._extract_view_candidates(node)
             views = self._choose_view_count(view_candidates)
             caption = self._extract_caption(node)
@@ -702,9 +910,13 @@ class InstagramData:
             age_hours = max((now - taken_at).total_seconds() / 3600, 0.01)
             views_per_hour = round(views / age_hours, 1)
             likes_per_hour = round(likes / age_hours, 1)
+            comments_per_hour = round(comments / age_hours, 1)
+            engagement = likes + comments
+            engagement_per_hour = round(engagement / age_hours, 1)
             like_rate_percent = round((likes / views) * 100, 2) if views else 0
 
             total_likes += likes
+            total_comments += comments
             total_views += views
 
             reel_items.append(
@@ -712,11 +924,16 @@ class InstagramData:
                     "shortcode": shortcode,
                     "taken_at": taken_at.isoformat(),
                     "caption": caption,
+                    "type": "reel",
                     "likes": likes,
+                    "comments": comments,
                     "views": views,
+                    "engagement": engagement,
                     "age_hours": round(age_hours, 1),
                     "views_per_hour": views_per_hour,
                     "likes_per_hour": likes_per_hour,
+                    "comments_per_hour": comments_per_hour,
+                    "engagement_per_hour": engagement_per_hour,
                     "like_rate_percent": like_rate_percent,
                     "view_candidates": view_candidates,
                     "typename": node.get("__typename"),
@@ -724,16 +941,13 @@ class InstagramData:
                     "media_type": node.get("media_type"),
                     "is_video": node.get("is_video"),
                     "source": source,
-                    "url": (
-                        f"https://www.instagram.com/reel/{shortcode}/"
-                        if shortcode
-                        else None
-                    ),
+                    "url": self._permalink_for_item(shortcode, "reel"),
                 }
             )
 
         self.values["reels_7d_count"] = len(reel_items)
         self.values["reels_7d_likes"] = total_likes
+        self.values["reels_7d_comments"] = total_comments
         self.values["reels_7d_views"] = total_views
         self.diagnostics["reels_7d_items"] = reel_items
 
@@ -787,5 +1001,11 @@ class InstagramMetricSensor(SensorEntity):
 
         if not self._metric_key.startswith("reels_7d"):
             attrs.pop("reels_7d_items", None)
+
+        if not self._metric_key.startswith("posts_7d"):
+            attrs.pop("posts_7d_items", None)
+
+        if not self._metric_key.startswith("recent_7d"):
+            attrs.pop("recent_7d_items", None)
 
         return attrs
