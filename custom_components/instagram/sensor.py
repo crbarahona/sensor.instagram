@@ -42,6 +42,19 @@ PROFILE_URL = "https://i.instagram.com/api/v1/users/web_profile_info/"
 CLIPS_USER_URL = "https://www.instagram.com/api/v1/clips/user/"
 RECENT_MEDIA_WINDOW_DAYS = 7
 
+PROFILE_METRIC_KEYS = (
+    "followers",
+    "posts",
+    "following",
+    "posts_7d_count",
+    "posts_7d_likes",
+    "posts_7d_comments",
+    "recent_7d_count",
+    "recent_7d_likes",
+    "recent_7d_comments",
+    "recent_7d_engagement",
+)
+
 USER_AGENT = (
     "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
     "AppleWebKit/537.36 (KHTML, like Gecko) "
@@ -116,13 +129,15 @@ class InstagramData:
         }
         self.profile: dict[str, Any] = {"full_name": None, "is_private": None, "is_verified": None, "profile_pic_url": None}
         self.diagnostics: dict[str, Any] = {
-            "integration_version": "1.1.5-curl-clips-posts-dashboard",
+            "integration_version": "1.1.6-preserve-profile-values",
             "fetch_method": "curl",
             "scan_interval_seconds": int(scan_interval.total_seconds()),
             "target_user_id": target_user_id,
             "profile_last_error": "not updated yet",
             "profile_last_status": None,
             "profile_last_response_preview": None,
+            "profile_values_preserved": False,
+            "profile_last_success": None,
             "clips_fetch_enabled": bool(target_user_id),
             "clips_last_error": None,
             "clips_last_status": None,
@@ -154,8 +169,48 @@ class InstagramData:
         elif profile_user:
             self._parse_recent_reels_from_profile(profile_user)
             self.diagnostics["views_source"] = "web_profile_info"
-        if self.diagnostics.get("profile_last_error") is None:
+        if self.diagnostics.get("profile_last_error") is None or self.diagnostics.get("clips_last_error") is None:
             self.diagnostics["last_success"] = datetime.now(timezone.utc).isoformat()
+
+    def _has_profile_values(self) -> bool:
+        return any(self.values.get(key) is not None for key in PROFILE_METRIC_KEYS)
+
+    @staticmethod
+    def _instagram_error_message(body: str) -> str | None:
+        try:
+            info = json.loads(body)
+        except Exception:
+            return None
+        if not isinstance(info, dict):
+            return None
+        parts = []
+        for key in ("message", "status", "error_type"):
+            value = info.get(key)
+            if value:
+                parts.append(f"{key}={value}")
+        for key in ("require_login", "igweb_rollout"):
+            value = info.get(key)
+            if value is not None:
+                parts.append(f"{key}={value}")
+        if parts:
+            return ", ".join(parts)
+        return None
+
+    def _mark_profile_values_preserved(self, error: str) -> None:
+        self.diagnostics["profile_last_error"] = error
+        self.diagnostics["profile_values_preserved"] = self._has_profile_values()
+        if self.diagnostics["profile_values_preserved"]:
+            _LOGGER.warning(
+                "Instagram profile fetch failed for %s; preserving previous profile values. %s",
+                self.account,
+                error,
+            )
+        else:
+            _LOGGER.warning(
+                "Instagram profile fetch failed for %s and no previous profile values are available. %s",
+                self.account,
+                error,
+            )
 
     async def _update_from_profile(self) -> dict[str, Any] | None:
         try:
@@ -164,20 +219,26 @@ class InstagramData:
             self.diagnostics["profile_last_status"] = status
             self.diagnostics["profile_last_response_preview"] = preview
             self.diagnostics["profile_last_error"] = None
+            self.diagnostics["profile_values_preserved"] = False
             if status != 200:
                 error = f"HTTP {status}"
+                instagram_message = self._instagram_error_message(body)
+                if instagram_message:
+                    error = f"{error}: {instagram_message}"
                 if stderr_text:
-                    error = f"{error}: {stderr_text}"
-                self.diagnostics["profile_last_error"] = error
+                    error = f"{error}; curl stderr={stderr_text}"
+                self._mark_profile_values_preserved(error)
                 return None
             try:
                 info: dict[str, Any] = json.loads(body)
             except Exception as json_error:
-                self.diagnostics["profile_last_error"] = f"JSON parse error: {json_error}"
+                self._mark_profile_values_preserved(f"JSON parse error: {json_error}")
                 return None
             user = info.get("data", {}).get("user")
             if not user:
-                self.diagnostics["profile_last_error"] = "No user object in Instagram response"
+                instagram_message = self._instagram_error_message(body)
+                message = instagram_message or "No user object in Instagram response"
+                self._mark_profile_values_preserved(message)
                 return None
             self.profile["full_name"] = user.get("full_name")
             self.profile["is_private"] = user.get("is_private")
@@ -186,9 +247,10 @@ class InstagramData:
             self.values["posts"] = self._count_from_edge(user.get("edge_owner_to_timeline_media"))
             self.values["followers"] = self._count_from_edge(user.get("edge_followed_by"))
             self.values["following"] = self._count_from_edge(user.get("edge_follow"))
+            self.diagnostics["profile_last_success"] = datetime.now(timezone.utc).isoformat()
             return user
         except Exception as error:
-            self.diagnostics["profile_last_error"] = str(error)
+            self._mark_profile_values_preserved(str(error))
             return None
 
     async def _fetch_profile_with_curl(self) -> tuple[int, str, str]:
