@@ -15,6 +15,7 @@ from datetime import datetime, timedelta, timezone
 import json
 import logging
 import os
+import random
 import re
 import tempfile
 from typing import Any
@@ -33,6 +34,11 @@ from homeassistant.helpers.event import async_track_time_interval
 
 CONF_ACCOUNT = "account"
 CONF_TARGET_USER_ID = "target_user_id"
+CONF_IGNORE_PROFILE_BACKOFF = "ignore_profile_backoff"
+
+DOMAIN = "instagram"
+SERVICE_FORCE_UPDATE = "force_update"
+DATA_KEY = "instagram_data_objects"
 
 DEFAULT_NAME = "Instagram"
 DEFAULT_SCAN_INTERVAL = timedelta(hours=24)
@@ -41,6 +47,10 @@ ICON = "mdi:instagram"
 PROFILE_URL = "https://i.instagram.com/api/v1/users/web_profile_info/"
 CLIPS_USER_URL = "https://www.instagram.com/api/v1/clips/user/"
 RECENT_MEDIA_WINDOW_DAYS = 7
+PROFILE_JITTER_MIN_SECONDS = 5
+PROFILE_JITTER_MAX_SECONDS = 90
+PROFILE_BACKOFF_SECONDS = 6 * 60 * 60
+PROFILE_BACKOFF_STATUS_CODES = {401, 403, 429}
 
 PROFILE_METRIC_KEYS = (
     "followers",
@@ -70,6 +80,13 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
     }
 )
 
+FORCE_UPDATE_SCHEMA = vol.Schema(
+    {
+        vol.Optional(CONF_ACCOUNT): cv.string,
+        vol.Optional(CONF_IGNORE_PROFILE_BACKOFF, default=False): cv.boolean,
+    }
+)
+
 _LOGGER = logging.getLogger(__name__)
 
 
@@ -87,6 +104,7 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     )
 
     data = InstagramData(account, scan_interval, target_user_id)
+    hass.data.setdefault(DOMAIN, {}).setdefault(DATA_KEY, {})[account] = data
 
     entities = [
         InstagramMetricSensor(data, name, "followers", "Followers", "mdi:account-group"),
@@ -104,13 +122,47 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         InstagramMetricSensor(data, name, "recent_7d_comments", "Recent 7d Comments", "mdi:comment-multiple"),
         InstagramMetricSensor(data, name, "recent_7d_engagement", "Recent 7d Engagement", "mdi:chart-line"),
     ]
+    data.entities = entities
 
     async_add_entities(entities, False)
 
-    async def update_all(now=None):
-        await data.async_update()
+    async def update_all(now=None, *, ignore_profile_backoff: bool = False):
+        await data.async_update(ignore_profile_backoff=ignore_profile_backoff)
         for entity in entities:
             entity.async_write_ha_state()
+
+    if not hass.services.has_service(DOMAIN, SERVICE_FORCE_UPDATE):
+        async def handle_force_update(call):
+            service_account = call.data.get(CONF_ACCOUNT)
+            ignore_profile_backoff = call.data.get(CONF_IGNORE_PROFILE_BACKOFF, False)
+            data_objects = hass.data.get(DOMAIN, {}).get(DATA_KEY, {})
+            if service_account:
+                selected = [data_objects.get(service_account)]
+                selected = [item for item in selected if item is not None]
+                if not selected:
+                    _LOGGER.warning(
+                        "Instagram force_update requested for unknown account %s",
+                        service_account,
+                    )
+                    return
+            else:
+                selected = list(data_objects.values())
+            _LOGGER.warning(
+                "Instagram force_update requested for %s account(s); ignore_profile_backoff=%s",
+                len(selected),
+                ignore_profile_backoff,
+            )
+            for data_object in selected:
+                await data_object.async_update(ignore_profile_backoff=ignore_profile_backoff)
+                for entity in getattr(data_object, "entities", []):
+                    entity.async_write_ha_state()
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_FORCE_UPDATE,
+            handle_force_update,
+            schema=FORCE_UPDATE_SCHEMA,
+        )
 
     hass.async_create_task(update_all())
     async_track_time_interval(hass, update_all, scan_interval)
@@ -121,6 +173,8 @@ class InstagramData:
         self.account = account
         self.scan_interval = scan_interval
         self.target_user_id = target_user_id
+        self.entities: list[InstagramMetricSensor] = []
+        self._profile_backoff_until: datetime | None = None
         self.values: dict[str, Any] = {
             "followers": None, "posts": None, "following": None,
             "reels_7d_count": None, "reels_7d_likes": None, "reels_7d_comments": None, "reels_7d_views": None,
@@ -129,7 +183,7 @@ class InstagramData:
         }
         self.profile: dict[str, Any] = {"full_name": None, "is_private": None, "is_verified": None, "profile_pic_url": None}
         self.diagnostics: dict[str, Any] = {
-            "integration_version": "1.1.6-preserve-profile-values",
+            "integration_version": "1.1.7-jitter-backoff-force-update",
             "fetch_method": "curl",
             "scan_interval_seconds": int(scan_interval.total_seconds()),
             "target_user_id": target_user_id,
@@ -138,6 +192,10 @@ class InstagramData:
             "profile_last_response_preview": None,
             "profile_values_preserved": False,
             "profile_last_success": None,
+            "profile_jitter_seconds": None,
+            "profile_backoff_until": None,
+            "profile_backoff_seconds": PROFILE_BACKOFF_SECONDS,
+            "profile_force_update_ignore_backoff": False,
             "clips_fetch_enabled": bool(target_user_id),
             "clips_last_error": None,
             "clips_last_status": None,
@@ -153,9 +211,10 @@ class InstagramData:
             "recent_7d_items": [],
         }
 
-    async def async_update(self) -> None:
+    async def async_update(self, *, ignore_profile_backoff: bool = False) -> None:
         _LOGGER.warning("Updating Instagram data for %s using curl", self.account)
-        profile_user = await self._update_from_profile()
+        self.diagnostics["profile_force_update_ignore_backoff"] = ignore_profile_backoff
+        profile_user = await self._update_from_profile(ignore_backoff=ignore_profile_backoff)
         if profile_user:
             self._parse_recent_media_from_profile(profile_user)
         if self.target_user_id:
@@ -212,8 +271,24 @@ class InstagramData:
                 error,
             )
 
-    async def _update_from_profile(self) -> dict[str, Any] | None:
+    async def _update_from_profile(self, *, ignore_backoff: bool = False) -> dict[str, Any] | None:
         try:
+            now = datetime.now(timezone.utc)
+            if self._profile_backoff_until and now < self._profile_backoff_until and not ignore_backoff:
+                error = f"profile fetch skipped during backoff until {self._profile_backoff_until.isoformat()}"
+                self.diagnostics["profile_backoff_until"] = self._profile_backoff_until.isoformat()
+                self._mark_profile_values_preserved(error)
+                return None
+
+            jitter_seconds = random.randint(PROFILE_JITTER_MIN_SECONDS, PROFILE_JITTER_MAX_SECONDS)
+            self.diagnostics["profile_jitter_seconds"] = jitter_seconds
+            _LOGGER.debug(
+                "Instagram profile fetch for %s delayed by %s seconds",
+                self.account,
+                jitter_seconds,
+            )
+            await asyncio.sleep(jitter_seconds)
+
             status, body, stderr_text = await self._fetch_profile_with_curl()
             preview = body[:500]
             self.diagnostics["profile_last_status"] = status
@@ -225,6 +300,10 @@ class InstagramData:
                 instagram_message = self._instagram_error_message(body)
                 if instagram_message:
                     error = f"{error}: {instagram_message}"
+                if status in PROFILE_BACKOFF_STATUS_CODES:
+                    self._profile_backoff_until = datetime.now(timezone.utc) + timedelta(seconds=PROFILE_BACKOFF_SECONDS)
+                    self.diagnostics["profile_backoff_until"] = self._profile_backoff_until.isoformat()
+                    error = f"{error}; backing off profile fetches until {self._profile_backoff_until.isoformat()}"
                 if stderr_text:
                     error = f"{error}; curl stderr={stderr_text}"
                 self._mark_profile_values_preserved(error)
@@ -247,6 +326,8 @@ class InstagramData:
             self.values["posts"] = self._count_from_edge(user.get("edge_owner_to_timeline_media"))
             self.values["followers"] = self._count_from_edge(user.get("edge_followed_by"))
             self.values["following"] = self._count_from_edge(user.get("edge_follow"))
+            self._profile_backoff_until = None
+            self.diagnostics["profile_backoff_until"] = None
             self.diagnostics["profile_last_success"] = datetime.now(timezone.utc).isoformat()
             return user
         except Exception as error:
