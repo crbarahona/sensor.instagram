@@ -35,6 +35,9 @@ from homeassistant.helpers.event import async_track_time_interval
 CONF_ACCOUNT = "account"
 CONF_TARGET_USER_ID = "target_user_id"
 CONF_IGNORE_PROFILE_BACKOFF = "ignore_profile_backoff"
+CONF_EXPOSE_REEL_VIEW_SENSORS = "expose_reel_view_sensors"
+CONF_REEL_SENSOR_LIMIT = "reel_sensor_limit"
+
 
 DOMAIN = "instagram"
 SERVICE_FORCE_UPDATE = "force_update"
@@ -42,6 +45,7 @@ DATA_KEY = "instagram_data_objects"
 
 DEFAULT_NAME = "Instagram"
 DEFAULT_SCAN_INTERVAL = timedelta(hours=24)
+DEFAULT_REEL_SENSOR_LIMIT = 12
 
 ICON = "mdi:instagram"
 PROFILE_URL = "https://i.instagram.com/api/v1/users/web_profile_info/"
@@ -77,6 +81,10 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend(
         vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
         vol.Optional(CONF_SCAN_INTERVAL, default=DEFAULT_SCAN_INTERVAL): cv.time_period,
         vol.Optional(CONF_TARGET_USER_ID): cv.string,
+        vol.Optional(CONF_EXPOSE_REEL_VIEW_SENSORS, default=False): cv.boolean,
+        vol.Optional(CONF_REEL_SENSOR_LIMIT, default=DEFAULT_REEL_SENSOR_LIMIT): vol.All(
+            vol.Coerce(int), vol.Range(min=1, max=50)
+        ),
     }
 )
 
@@ -96,6 +104,8 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
     name = config[CONF_NAME]
     scan_interval = config[CONF_SCAN_INTERVAL]
     target_user_id = config.get(CONF_TARGET_USER_ID)
+    expose_reel_view_sensors = config[CONF_EXPOSE_REEL_VIEW_SENSORS]
+    reel_sensor_limit = config[CONF_REEL_SENSOR_LIMIT]
 
     _LOGGER.warning(
         "Setting up Instagram sensors for %s with scan interval %s",
@@ -122,6 +132,13 @@ async def async_setup_platform(hass, config, async_add_entities, discovery_info=
         InstagramMetricSensor(data, name, "recent_7d_comments", "Recent 7d Comments", "mdi:comment-multiple"),
         InstagramMetricSensor(data, name, "recent_7d_engagement", "Recent 7d Engagement", "mdi:chart-line"),
     ]
+
+    if expose_reel_view_sensors:
+        for index in range(reel_sensor_limit):
+            entities.append(
+                InstagramRecentReelViewSensor(data, name, index)
+            )
+
     data.entities = entities
 
     async_add_entities(entities, False)
@@ -708,3 +725,66 @@ class InstagramMetricSensor(SensorEntity):
         if not is_recent_metric:
             attrs.pop("recent_7d_items", None)
         return attrs
+
+
+class InstagramRecentReelViewSensor(SensorEntity):
+    _attr_should_poll = False
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_icon = "mdi:eye"
+
+    def __init__(self, data: InstagramData, base_name: str, index: int) -> None:
+        self._data = data
+        self._index = index
+        if base_name == DEFAULT_NAME:
+            base_name = f"Instagram {data.account}"
+        self._attr_name = f"{base_name} Reel {index + 1} Views"
+        self._attr_unique_id = f"instagram_{data.account}_recent_reel_{index + 1}_views"
+
+    @property
+    def _item(self) -> dict[str, Any] | None:
+        items = self._data.diagnostics.get("reels_7d_items", [])
+        if not isinstance(items, list):
+            return None
+        if self._index >= len(items):
+            return None
+        item = items[self._index]
+        if not isinstance(item, dict):
+            return None
+        return item
+
+    @property
+    def native_value(self):
+        item = self._item
+        if item is None:
+            return None
+        return item.get("views")
+
+    @property
+    def available(self) -> bool:
+        item = self._item
+        return item is not None and item.get("views") is not None
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        item = self._item or {}
+        return {
+            "account": self._data.account,
+            "metric": "recent_reel_views",
+            "reel_index": self._index + 1,
+            "shortcode": item.get("shortcode"),
+            "caption": item.get("caption"),
+            "url": item.get("url"),
+            "taken_at": item.get("taken_at"),
+            "posted_date": item.get("posted_date"),
+            "posted_time": item.get("posted_time"),
+            "posted_datetime": item.get("posted_datetime"),
+            "likes": item.get("likes"),
+            "comments": item.get("comments"),
+            "engagement": item.get("engagement"),
+            "views_per_hour": item.get("views_per_hour"),
+            "likes_per_hour": item.get("likes_per_hour"),
+            "comments_per_hour": item.get("comments_per_hour"),
+            "engagement_per_hour": item.get("engagement_per_hour"),
+            "like_rate_percent": item.get("like_rate_percent"),
+            "source": item.get("source"),
+        }
