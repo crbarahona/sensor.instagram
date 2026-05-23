@@ -183,7 +183,7 @@ class InstagramData:
         }
         self.profile: dict[str, Any] = {"full_name": None, "is_private": None, "is_verified": None, "profile_pic_url": None}
         self.diagnostics: dict[str, Any] = {
-            "integration_version": "1.1.7-jitter-backoff-force-update",
+            "integration_version": "1.1.8-posted-date-fields",
             "fetch_method": "curl",
             "scan_interval_seconds": int(scan_interval.total_seconds()),
             "target_user_id": target_user_id,
@@ -506,6 +506,14 @@ class InstagramData:
         return None
 
     @staticmethod
+    def _posted_time_fields(taken_at: datetime) -> dict[str, str]:
+        return {
+            "posted_date": taken_at.strftime("%Y-%m-%d"),
+            "posted_time": taken_at.strftime("%H:%M"),
+            "posted_datetime": taken_at.strftime("%Y-%m-%d %H:%M UTC"),
+        }
+
+    @staticmethod
     def _extract_caption(node: dict[str, Any]) -> str | None:
         caption_text = node.get("caption_text")
         if isinstance(caption_text, str) and caption_text:
@@ -586,7 +594,7 @@ class InstagramData:
             comments_per_hour = round(comments / age_hours, 1)
             engagement = likes + comments
             engagement_per_hour = round(engagement / age_hours, 1)
-            item = {"shortcode": shortcode, "taken_at": taken_at.isoformat(), "caption": caption, "type": media_kind, "likes": likes, "comments": comments, "engagement": engagement, "age_hours": round(age_hours, 1), "likes_per_hour": likes_per_hour, "comments_per_hour": comments_per_hour, "engagement_per_hour": engagement_per_hour, "typename": node.get("__typename"), "product_type": node.get("product_type"), "media_type": node.get("media_type"), "is_video": node.get("is_video"), "source": "web_profile_info", "url": self._permalink_for_item(shortcode, media_kind)}
+            item = {"shortcode": shortcode, "taken_at": taken_at.isoformat(), **self._posted_time_fields(taken_at), "caption": caption, "type": media_kind, "likes": likes, "comments": comments, "engagement": engagement, "age_hours": round(age_hours, 1), "likes_per_hour": likes_per_hour, "comments_per_hour": comments_per_hour, "engagement_per_hour": engagement_per_hour, "typename": node.get("__typename"), "product_type": node.get("product_type"), "media_type": node.get("media_type"), "is_video": node.get("is_video"), "source": "web_profile_info", "url": self._permalink_for_item(shortcode, media_kind)}
             total_recent_likes += likes
             total_recent_comments += comments
             recent_items.append(item)
@@ -656,7 +664,7 @@ class InstagramData:
             total_likes += likes
             total_comments += comments
             total_views += views
-            reel_items.append({"shortcode": shortcode, "taken_at": taken_at.isoformat(), "caption": caption, "type": "reel", "likes": likes, "comments": comments, "views": views, "engagement": engagement, "age_hours": round(age_hours, 1), "views_per_hour": views_per_hour, "likes_per_hour": likes_per_hour, "comments_per_hour": comments_per_hour, "engagement_per_hour": engagement_per_hour, "like_rate_percent": like_rate_percent, "view_candidates": view_candidates, "typename": node.get("__typename"), "product_type": node.get("product_type"), "media_type": node.get("media_type"), "is_video": node.get("is_video"), "source": source, "url": self._permalink_for_item(shortcode, "reel")})
+            reel_items.append({"shortcode": shortcode, "taken_at": taken_at.isoformat(), **self._posted_time_fields(taken_at), "caption": caption, "type": "reel", "likes": likes, "comments": comments, "views": views, "engagement": engagement, "age_hours": round(age_hours, 1), "views_per_hour": views_per_hour, "likes_per_hour": likes_per_hour, "comments_per_hour": comments_per_hour, "engagement_per_hour": engagement_per_hour, "like_rate_percent": like_rate_percent, "view_candidates": view_candidates, "typename": node.get("__typename"), "product_type": node.get("product_type"), "media_type": node.get("media_type"), "is_video": node.get("is_video"), "source": source, "url": self._permalink_for_item(shortcode, "reel")})
         self.values["reels_7d_count"] = len(reel_items)
         self.values["reels_7d_likes"] = total_likes
         self.values["reels_7d_comments"] = total_comments
